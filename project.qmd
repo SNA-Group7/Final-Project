@@ -72,7 +72,7 @@ list.files() # List the files in the current working directory to see if you're 
 # ?sienaNet
 ```
 
-# Dataset Preprocessing 
+# Dataset Preprocessing
 
 ```{r}
 ## Process Raw Dataset ##
@@ -215,7 +215,7 @@ summary(jan_feb_transactions, print.adj = FALSE)
 
 # Descriptive Analysis
 
-Finding: During preprocessing, popular users (at least 10 transactions) are found based on their transactions throughout all time. However, based on the below, popular users in the July2018-Feb2019 range are not popular within the three smaller ranges. Thus, may need to get popular users per range (or not compare across ranges at all).
+Finding: During preprocessing, popular users (at least 10 transactions) are found based on their transactions throughout all time. However, based on the below, popular users in the July2018-Feb2019 range are not popular within the three smaller ranges. Thus, may need to get popular users per range (or not compare across ranges at all). Likely need to make different "pruned" datasets for each range if want to do this.
 
 ```{r}
 library(igraph)
