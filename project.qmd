@@ -217,6 +217,16 @@ summary(jan_feb_transactions, print.adj = FALSE)
 
 Finding: During preprocessing, popular users (at least 10 transactions) are found based on their transactions throughout all time. However, based on the below, popular users in the July2018-Feb2019 range are not popular within the three smaller ranges. Thus, may need to get popular users per range (or not compare across ranges at all). Likely need to make different "pruned" datasets for each range if want to do this.
 
+all_transactions:
+
+This network was created by going through the original dataset and pruning it so it'd be easier to work with. First, all users with at least 10 unique transactions are found. Then, the neighbors of these "popular" users and the neighbors of the neighbors are found. Then, a new dataset called pruned_venmo is made by only keeping track of transactions with users from these 3 groups. Doing this causes all 2010 components in the network to have a size of at least 10 (which is demonstrated below). Most components have under 300 nodes, so to make analysis more interesting, we choose to look at the largest one of 248,884 nodes and 316, 400 edges. It also has a density of 5.107922e-06, meaning the network is very sparse, which would be expected in large social networks. Due to its size, it's difficult to make conclusions from its visualization, but it seems that it grows increasingly clustered towards the middle.
+
+In the largest component, 260,922 of transactions are Payments, while only 55,478 are Charges. In addition, 163,179 users use iPhone, 13,038 use Android, and 455 use some other platform. Unfortunately, due to the nature of the dataset, it's only possible to know the phone type of Senders (sent a transaction), so 72,212 have an unknown application type.
+
+Specific Date Range Networks:
+
+The "popular" users across all_transactions are not popular within the date ranges. This means that within the ranges of July-September, October, and January-February, no user has 10 unique interactions. To decrease the sparsity of the components in these networks, "popular" user preprocessing must be done on these ranges individually.
+
 ```{r}
 library(igraph)
 install.packages("intergraph")
@@ -231,6 +241,10 @@ giantGraph_all <- all_transactions_net %>%
   induced.subgraph(., which(all_comp$membership == which.max(all_comp$csize)))
 print(vcount(giantGraph_all)) # Nodes
 print(ecount(giantGraph_all)) # Edges
+graph.density(giantGraph_all)
+table(E(giantGraph_all)$type)
+table(V(giantGraph_all)$phone_type)
+
 plot(giantGraph_all, vertex.size = 1, vertex.label = NA)
 
 # July-September Network #
