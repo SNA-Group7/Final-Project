@@ -1,0 +1,270 @@
+---
+title: "SNAP"
+author: "Group 7"
+date: today
+execute:
+  echo: false
+format: 
+  pdf:
+      output-file: "SNAP"
+      output-ext: "pdf"
+      toc: true
+      toc-depth: 4
+      shift-heading-level-by: 2
+      fig-pos: "H"
+      fig-cap-location: top
+      geometry:
+        - top=1in
+        - right=.8in
+        - bottom=1in
+        - left=.8in
+      link-citations: true
+      linkcolor: blue
+      include-in-header: 
+        text: |
+          \usepackage{fancyhdr}
+          \usepackage{titling}
+          \pagestyle{fancy}
+          \fancyhf{}
+          \renewcommand\maketitle{
+            \fancyhead[C]{
+              \thetitle
+              \ifx \theauthor\empty  \else \ – \theauthor \fi
+              \ifx \thedate\empty  \else \ – \thedate \ \fi
+            }
+          }
+          \fancyfoot[C]{\thepage}
+---
+
+```{r}
+#| label: libraries
+#| echo: false
+#| output: false
+#| message: false
+
+rm(list=ls())
+
+# Start with a clear environment
+rm(list=ls())
+
+# Load necessary packages
+if (!"devtools" %in% installed.packages()) install.packages("devtools") ## for the install_version function
+library(devtools)
+if (!"RSiena" %in% installed.packages()) install.packages("RSiena") ## install latest version 
+library(RSiena)
+packageVersion("RSiena")
+library(statnet)
+library(readr)
+library(dplyr)
+library(tidyr)
+library(sna)
+
+
+
+# ---------------------------------------------------------------------------------------------
+# Set the working directory:
+# Session > Set Working Directory > To Source File Location
+# ---------------------------------------------------------------------------------------------
+list.files() # List the files in the current working directory to see if you're in the right directory
+
+# For more information about the packages we're using in this lab...
+# ?RSiena
+# ?sienaNet
+```
+
+# Dataset Preprocessing 
+
+```{r}
+## Process Raw Dataset ##
+# Read and Shrink Dataset
+selected_columns <- c("_id", 
+                      "date_updated",
+                      "payment.actor.username", 
+                      "payment.target.user.username",
+                      "note",
+                      "app.description",
+                      "payment.action")
+
+venmo_df <- read_csv("venmo.csv", col_select = all_of(selected_columns), n_max=7000000)
+venmo_df <- venmo_df %>%
+  rename(
+    date = date_updated,
+    sender = payment.actor.username,
+    recipient = payment.target.user.username,
+    note = note,
+    phone_type = app.description,
+    payment_type = payment.action
+  )
+
+# Remove Null Rows # Move this above
+venmo_df <- venmo_df %>%
+  filter(complete.cases(select(., all_of(c("date", "sender", "recipient", "note", "phone_type", "payment_type")))))
+
+## Snowballing (Want to include popular users, their friends, and the friends of their friends)
+# Unique Interactions (All components should be at least size 10)
+unique_interactions <- venmo_df %>%
+  rowwise() %>%
+  mutate(interaction = paste(sort(c(sender, recipient)), collapse = "_")) %>%
+  distinct(interaction, .keep_all = TRUE)
+
+# Get Popular Users (10+ Transactions)
+popular_threshold <- 10
+popular_users <- unique_interactions %>%
+  pivot_longer(cols = c(sender, recipient), names_to = "type", values_to = "username") %>%
+  count(username, name = "count") %>%
+  arrange(desc(count)) %>%
+  filter(count > popular_threshold)
+# Get Friends of Popular Users (Transaction with Popular User)
+popular_usernames <- popular_users$username
+friends_of_popular_users <- venmo_df %>%
+  filter(sender %in% popular_usernames | recipient %in% popular_usernames)
+
+users_of_interest <- friends_of_popular_users %>%
+  select(sender, recipient) %>%
+  pivot_longer(cols = c(sender, recipient), names_to = "type", values_to = "username") 
+
+
+# Get Shrunk Dataset
+usernames_of_interest = users_of_interest$username
+pruned_venmo_df <- venmo_df %>%
+  filter(sender %in% usernames_of_interest | recipient %in% usernames_of_interest)
+
+# Save it
+write.csv(pruned_venmo_df, file = "pruned_venmo.csv", row.names = FALSE)
+
+```
+
+```{r}
+## Prep Datasets ##
+# Load Dataset
+pruned_venmo_df <- read_csv("pruned_venmo.csv")
+head(pruned_venmo_df)
+
+# Split By Date #
+#NOTE: Possible that should do popular_user stuff per Date Range Network
+#July 2018 - September 2018
+jul_sep_range_df <- pruned_venmo_df %>% filter(pruned_venmo_df$date >= as.POSIXct("2018-07-01 00:00:00")
+                                               & pruned_venmo_df$date < as.POSIXct("2018-10-01 00:00:00"))
+#October 2018
+oct_range_df <- pruned_venmo_df %>% filter(pruned_venmo_df$date >= as.POSIXct("2018-10-01 00:00:00")
+                                               & pruned_venmo_df$date < as.POSIXct("2018-11-01 00:00:00"))
+#Jan 2019 - Feb 2019
+jan_feb_range_df <- pruned_venmo_df %>% filter(pruned_venmo_df$date >= as.POSIXct("2019-01-01 00:00:00")
+                                               & pruned_venmo_df$date < as.POSIXct("2019-03-01 00:00:00"))
+
+
+# Transactions
+transaction_df <- pruned_venmo_df[, c("sender", "recipient", "payment_type")]
+# Phone Type
+phone_df <- pruned_venmo_df[, c("sender", "phone_type")]
+phone_df <- phone_df[!duplicated(phone_df$sender), ]
+
+phone_types <- phone_df$phone_type[match(network.vertex.names(transactions), phone_df$sender)]
+phone_types[is.na(phone_types)] <- "unknown" # If a user never sends, can't know device
+phone_types[!(phone_types %in% c("Venmo for Android", "Venmo for iPhone", "unknown"))] <- "other" # Known venmo application but not Apple or Android
+```
+
+# Construct the Networks
+
+```{r}
+## Build the Networks ##
+detach("package:igraph", unload = TRUE)
+library(network)
+#Full Network#
+# Convert transaction edgelist into a network
+all_transactions <- as.network.matrix(transaction_df, matrix.type = "edgelist") 
+# Label Directed Links
+all_transactions <- set.edge.attribute(all_transactions, "type", transaction_df$payment_type)
+# Add Phone Types
+all_transactions |> network::set.vertex.attribute("phone_type", 
+                                                  phone_types)
+summary(all_transactions, print.adj = FALSE)
+
+#July-September Network#
+# Convert transaction edgelist into a network
+jul_sep_transactions <- as.network.matrix(jul_sep_range_df, matrix.type = "edgelist") 
+# Label Directed Links
+jul_sep_transactions <- set.edge.attribute(jul_sep_transactions, "type", jul_sep_range_df$payment_type)
+# Add Phone Types
+jul_sep_transactions |> network::set.vertex.attribute("phone_type", 
+                                                      phone_types)
+summary(jul_sep_transactions, print.adj = FALSE)
+
+#October Network#
+# Convert transaction edgelist into a network
+oct_transactions <- as.network.matrix(oct_range_df, matrix.type = "edgelist") 
+# Label Directed Links
+oct_transactions <- set.edge.attribute(oct_transactions, "type", oct_range_df$payment_type)
+# Add Phone Types
+oct_transactions |> network::set.vertex.attribute("phone_type", 
+                                                  phone_types)
+summary(oct_transactions, print.adj = FALSE)
+
+#January-February Network#
+# Convert transaction edgelist into a network
+jan_feb_transactions <- as.network.matrix(jan_feb_range_df, matrix.type = "edgelist") 
+# Label Directed Links
+jan_feb_transactions <- set.edge.attribute(jan_feb_transactions, "type", transaction_df$payment_type)
+# Add Phone Types
+jan_feb_transactions |> network::set.vertex.attribute("phone_type", 
+                                                      phone_types)
+summary(jan_feb_transactions, print.adj = FALSE)
+
+
+```
+
+# Descriptive Analysis
+
+Finding: During preprocessing, popular users (at least 10 transactions) are found based on their transactions throughout all time. However, based on the below, popular users in the July2018-Feb2019 range are not popular within the three smaller ranges. Thus, may need to get popular users per range (or not compare across ranges at all).
+
+```{r}
+library(igraph)
+install.packages("intergraph")
+library(intergraph)
+## Network Descriptions ##
+# Full Network #
+all_transactions_net <- asIgraph(all_transactions)
+# Components 
+all_comp <- components(all_transactions_net); all_comp$no
+all_comp$csize
+giantGraph_all <- all_transactions_net %>% 
+  induced.subgraph(., which(all_comp$membership == which.max(all_comp$csize)))
+print(vcount(giantGraph_all)) # Nodes
+print(ecount(giantGraph_all)) # Edges
+plot(giantGraph_all, vertex.size = 1, vertex.label = NA)
+
+# July-September Network #
+july_sep_transactions_net <- asIgraph(jul_sep_transactions)
+# Components 
+july_sep_comp <- components(july_sep_transactions_net); july_sep_comp$no
+july_sep_comp$csize
+giantGraph_july_sep <- july_sep_transactions_net %>% 
+  induced.subgraph(., which(july_sep_comp$membership == which.max(july_sep_comp$csize)))
+print(vcount(giantGraph_july_sep)) # Nodes
+print(ecount(giantGraph_july_sep)) # Edges
+plot(giantGraph_july_sep, vertex.size = 1, vertex.label = NA)
+
+# October Network #
+oct_transactions_net <- asIgraph(oct_transactions)
+# Components 
+oct_comp <- components(oct_transactions_net); oct_comp$no
+oct_comp$csize
+giantGraph_oct <- oct_transactions_net %>% 
+  induced.subgraph(., which(oct_comp$membership == which.max(oct_comp$csize)))
+print(vcount(giantGraph_oct)) # Nodes
+print(ecount(giantGraph_oct)) # Edges
+plot(giantGraph_oct, vertex.size = 1, vertex.label = NA)
+
+# January-February Network #
+jan_feb_transactions_net <- asIgraph(jan_feb_transactions)
+# Components 
+jan_feb_comp <- components(jan_feb_transactions_net); jan_feb_comp$no
+jan_feb_comp$csize
+giantGraph_jan_feb <- jan_feb_transactions_net %>% 
+  induced.subgraph(., which(jan_feb_comp$membership == which.max(jan_feb_comp$csize)))
+print(vcount(giantGraph_jan_feb)) # Nodes
+print(ecount(giantGraph_jan_feb)) # Edges
+plot(giantGraph_jan_feb, vertex.size = 1, vertex.label = NA)
+```
+
+## 
