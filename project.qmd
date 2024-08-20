@@ -146,18 +146,23 @@ head(pruned_venmo_df)
 # Split By Date #
 #NOTE: Possible that should do popular_user stuff per Date Range Network
 #July 2018 - September 2018
-jul_sep_range_df <- pruned_venmo_df %>% filter(pruned_venmo_df$date >= as.POSIXct("2018-07-01 00:00:00")
+jul_sep_transaction_df <- pruned_venmo_df %>% filter(pruned_venmo_df$date >= as.POSIXct("2018-07-01 00:00:00")
                                                & pruned_venmo_df$date < as.POSIXct("2018-10-01 00:00:00"))
+jul_sep_transaction_df <- jul_sep_transaction_df[, c("sender", "recipient", "payment_type")]
 #October 2018
-oct_range_df <- pruned_venmo_df %>% filter(pruned_venmo_df$date >= as.POSIXct("2018-10-01 00:00:00")
+oct_transaction_df <- pruned_venmo_df %>% filter(pruned_venmo_df$date >= as.POSIXct("2018-10-01 00:00:00")
                                                & pruned_venmo_df$date < as.POSIXct("2018-11-01 00:00:00"))
+oct_transaction_df <- oct_transaction_df[, c("sender", "recipient", "payment_type")]
+
 #Jan 2019 - Feb 2019
-jan_feb_range_df <- pruned_venmo_df %>% filter(pruned_venmo_df$date >= as.POSIXct("2019-01-01 00:00:00")
+jan_feb_transaction_df <- pruned_venmo_df %>% filter(pruned_venmo_df$date >= as.POSIXct("2019-01-01 00:00:00")
                                                & pruned_venmo_df$date < as.POSIXct("2019-03-01 00:00:00"))
+jan_feb_transaction_df <- jan_feb_transaction_df[, c("sender", "recipient", "payment_type")]
 
 
 # Transactions
-transaction_df <- pruned_venmo_df[, c("sender", "recipient", "payment_type")]
+all_transaction_df <- pruned_venmo_df[, c("sender", "recipient", "payment_type")]
+
 # Phone Type
 phone_df <- pruned_venmo_df[, c("sender", "phone_type")]
 phone_df <- phone_df[!duplicated(phone_df$sender), ]
@@ -178,11 +183,11 @@ phone_df$phone_type[!(phone_df$phone_type %in% c("Venmo for Android", "Venmo for
 #detach("package:igraph", unload = TRUE)
 #library(network)
 #Full Network#
-all_transactions_net <- graph_from_data_frame(d = transaction_df, 
+all_transactions_net <- graph_from_data_frame(d = all_transaction_df, 
                                               directed = TRUE, 
                                               vertices = NULL)
 # Label Directed Links
-E(all_transactions_net)$type <- transaction_df$payment_type
+E(all_transactions_net)$type <- all_transaction_df$payment_type
 # Add Phone Types
 phone_types <- setNames(phone_df$phone_type, phone_df$sender)
 V(all_transactions_net)$phone_type <- phone_types[V(all_transactions_net)$name]
@@ -190,37 +195,33 @@ V(all_transactions_net)$phone_type <- phone_types[V(all_transactions_net)$name]
 edge_attr(all_transactions_net)
 vertex_attr(all_transactions_net)
 
-#July-September Network#
-# Convert transaction edgelist into a network
-#jul_sep_transactions <- as.network.matrix(jul_sep_range_df, matrix.type = "edgelist") 
-# Label Directed Links
-#jul_sep_transactions <- set.edge.attribute(jul_sep_transactions, "type", jul_sep_range_df$payment_type)
-# Add Phone Types
-#jul_sep_transactions |> network::set.vertex.attribute("phone_type", 
-                                                      phone_types)
-#summary(jul_sep_transactions, print.adj = FALSE)
-
-#October Network#
-# Convert transaction edgelist into a network
-#oct_transactions <- as.network.matrix(oct_range_df, matrix.type = "edgelist") 
-# Label Directed Links
-#oct_transactions <- set.edge.attribute(oct_transactions, "type", oct_range_df$payment_type)
-# Add Phone Types
-#oct_transactions |> network::set.vertex.attribute("phone_type", 
-                                                  phone_types)
-#summary(oct_transactions, print.adj = FALSE)
-
-#January-February Network#
-# Convert transaction edgelist into a network
-#jan_feb_transactions <- as.network.matrix(jan_feb_range_df, matrix.type = "edgelist") 
-# Label Directed Links
-#jan_feb_transactions <- set.edge.attribute(jan_feb_transactions, "type", transaction_df$payment_type)
-# Add Phone Types
-#jan_feb_transactions |> network::set.vertex.attribute("phone_type", 
-                                                      phone_types)
-#summary(jan_feb_transactions, print.adj = FALSE)
-
-
+### UNUSED ###
+# #July-September Network#
+# jul_sep_transactions_net <- graph_from_data_frame(d = jul_sep_transaction_df, 
+#                                               directed = TRUE, 
+#                                               vertices = NULL)
+# # Label Directed Links
+# E(jul_sep_transactions_net)$type <- jul_sep_transaction_df$payment_type
+# # Add Phone Types
+# V(jul_sep_transactions_net)$phone_type <- phone_types[V(jul_sep_transactions_net)$name]
+# 
+# #October Network#
+# oct_transactions_net <- graph_from_data_frame(d = oct_transaction_df, 
+#                                               directed = TRUE, 
+#                                               vertices = NULL)
+# # Label Directed Links
+# E(oct_transactions_net)$type <- oct_transaction_df$payment_type
+# # Add Phone Types
+# V(oct_transactions_net)$phone_type <- phone_types[V(oct_transactions_net)$name]
+# 
+# #January-February Network#
+# jan_feb_transactions_net <- graph_from_data_frame(d = jan_feb_transaction_df, 
+#                                               directed = TRUE, 
+#                                               vertices = NULL)
+# # Label Directed Links
+# E(jan_feb_transactions_net)$type <- jan_feb_transaction_df$payment_type
+# # Add Phone Types
+# V(jan_feb_transactions_net)$phone_type <- phone_types[V(jan_feb_transactions_net)$name]
 ```
 
 # Descriptive Analysis
@@ -255,38 +256,27 @@ table(V(giantGraph_all)$phone_type)
 
 plot(giantGraph_all, vertex.size = 1, vertex.label = NA)
 
+###UNUSED###
 # # July-September Network #
-# july_sep_transactions_net <- asIgraph(jul_sep_transactions)
-# # Components 
+# # Components
 # july_sep_comp <- components(july_sep_transactions_net); july_sep_comp$no
 # july_sep_comp$csize
-# giantGraph_july_sep <- july_sep_transactions_net %>% 
+# giantGraph_july_sep <- july_sep_transactions_net %>%
 #   induced.subgraph(., which(july_sep_comp$membership == which.max(july_sep_comp$csize)))
-# print(vcount(giantGraph_july_sep)) # Nodes
-# print(ecount(giantGraph_july_sep)) # Edges
-# plot(giantGraph_july_sep, vertex.size = 1, vertex.label = NA)
 # 
 # # October Network #
-# oct_transactions_net <- asIgraph(oct_transactions)
-# # Components 
+# # Components
 # oct_comp <- components(oct_transactions_net); oct_comp$no
 # oct_comp$csize
-# giantGraph_oct <- oct_transactions_net %>% 
+# giantGraph_oct <- oct_transactions_net %>%
 #   induced.subgraph(., which(oct_comp$membership == which.max(oct_comp$csize)))
-# print(vcount(giantGraph_oct)) # Nodes
-# print(ecount(giantGraph_oct)) # Edges
-# plot(giantGraph_oct, vertex.size = 1, vertex.label = NA)
 # 
 # # January-February Network #
-# jan_feb_transactions_net <- asIgraph(jan_feb_transactions)
-# # Components 
+# # Components
 # jan_feb_comp <- components(jan_feb_transactions_net); jan_feb_comp$no
 # jan_feb_comp$csize
-# giantGraph_jan_feb <- jan_feb_transactions_net %>% 
+# giantGraph_jan_feb <- jan_feb_transactions_net %>%
 #   induced.subgraph(., which(jan_feb_comp$membership == which.max(jan_feb_comp$csize)))
-# print(vcount(giantGraph_jan_feb)) # Nodes
-# print(ecount(giantGraph_jan_feb)) # Edges
-# plot(giantGraph_jan_feb, vertex.size = 1, vertex.label = NA)
 ```
 
 ```{r}
