@@ -58,6 +58,7 @@ library(readr)
 library(dplyr)
 library(tidyr)
 library(sna)
+library(igraph)
 
 
 
@@ -73,6 +74,8 @@ list.files() # List the files in the current working directory to see if you're 
 ```
 
 # Dataset Preprocessing
+
+## Prune the Dataset
 
 ```{r}
 ## Process Raw Dataset ##
@@ -158,57 +161,64 @@ transaction_df <- pruned_venmo_df[, c("sender", "recipient", "payment_type")]
 # Phone Type
 phone_df <- pruned_venmo_df[, c("sender", "phone_type")]
 phone_df <- phone_df[!duplicated(phone_df$sender), ]
-
-phone_types <- phone_df$phone_type[match(network.vertex.names(transactions), phone_df$sender)]
-phone_types[is.na(phone_types)] <- "unknown" # If a user never sends, can't know device
-phone_types[!(phone_types %in% c("Venmo for Android", "Venmo for iPhone", "unknown"))] <- "other" # Known venmo application but not Apple or Android
+non_senders <- setdiff(pruned_venmo_df$recipient, unique(pruned_venmo_df$sender))
+non_senders_df <- data.frame(
+  sender = non_senders,
+  phone_type = "unknown",
+  stringsAsFactors = FALSE
+)
+phone_df <- rbind(phone_df, non_senders_df)
+phone_df$phone_type[!(phone_df$phone_type %in% c("Venmo for Android", "Venmo for iPhone", "unknown"))] <- "other" #Known venmo application but not Apple or Android
 ```
 
-# Construct the Networks
+## Construct the Networks
 
 ```{r}
 ## Build the Networks ##
-detach("package:igraph", unload = TRUE)
-library(network)
+#detach("package:igraph", unload = TRUE)
+#library(network)
 #Full Network#
-# Convert transaction edgelist into a network
-all_transactions <- as.network.matrix(transaction_df, matrix.type = "edgelist") 
+all_transactions_net <- graph_from_data_frame(d = transaction_df, 
+                                              directed = TRUE, 
+                                              vertices = NULL)
 # Label Directed Links
-all_transactions <- set.edge.attribute(all_transactions, "type", transaction_df$payment_type)
+E(all_transactions_net)$type <- transaction_df$payment_type
 # Add Phone Types
-all_transactions |> network::set.vertex.attribute("phone_type", 
-                                                  phone_types)
-summary(all_transactions, print.adj = FALSE)
+phone_types <- setNames(phone_df$phone_type, phone_df$sender)
+V(all_transactions_net)$phone_type <- phone_types[V(all_transactions_net)$name]
+
+edge_attr(all_transactions_net)
+vertex_attr(all_transactions_net)
 
 #July-September Network#
 # Convert transaction edgelist into a network
-jul_sep_transactions <- as.network.matrix(jul_sep_range_df, matrix.type = "edgelist") 
+#jul_sep_transactions <- as.network.matrix(jul_sep_range_df, matrix.type = "edgelist") 
 # Label Directed Links
-jul_sep_transactions <- set.edge.attribute(jul_sep_transactions, "type", jul_sep_range_df$payment_type)
+#jul_sep_transactions <- set.edge.attribute(jul_sep_transactions, "type", jul_sep_range_df$payment_type)
 # Add Phone Types
-jul_sep_transactions |> network::set.vertex.attribute("phone_type", 
+#jul_sep_transactions |> network::set.vertex.attribute("phone_type", 
                                                       phone_types)
-summary(jul_sep_transactions, print.adj = FALSE)
+#summary(jul_sep_transactions, print.adj = FALSE)
 
 #October Network#
 # Convert transaction edgelist into a network
-oct_transactions <- as.network.matrix(oct_range_df, matrix.type = "edgelist") 
+#oct_transactions <- as.network.matrix(oct_range_df, matrix.type = "edgelist") 
 # Label Directed Links
-oct_transactions <- set.edge.attribute(oct_transactions, "type", oct_range_df$payment_type)
+#oct_transactions <- set.edge.attribute(oct_transactions, "type", oct_range_df$payment_type)
 # Add Phone Types
-oct_transactions |> network::set.vertex.attribute("phone_type", 
+#oct_transactions |> network::set.vertex.attribute("phone_type", 
                                                   phone_types)
-summary(oct_transactions, print.adj = FALSE)
+#summary(oct_transactions, print.adj = FALSE)
 
 #January-February Network#
 # Convert transaction edgelist into a network
-jan_feb_transactions <- as.network.matrix(jan_feb_range_df, matrix.type = "edgelist") 
+#jan_feb_transactions <- as.network.matrix(jan_feb_range_df, matrix.type = "edgelist") 
 # Label Directed Links
-jan_feb_transactions <- set.edge.attribute(jan_feb_transactions, "type", transaction_df$payment_type)
+#jan_feb_transactions <- set.edge.attribute(jan_feb_transactions, "type", transaction_df$payment_type)
 # Add Phone Types
-jan_feb_transactions |> network::set.vertex.attribute("phone_type", 
+#jan_feb_transactions |> network::set.vertex.attribute("phone_type", 
                                                       phone_types)
-summary(jan_feb_transactions, print.adj = FALSE)
+#summary(jan_feb_transactions, print.adj = FALSE)
 
 
 ```
@@ -229,11 +239,9 @@ The "popular" users across all_transactions are not popular within the date rang
 
 ```{r}
 library(igraph)
-install.packages("intergraph")
 library(intergraph)
 ## Network Descriptions ##
 # Full Network #
-all_transactions_net <- asIgraph(all_transactions)
 # Components 
 all_comp <- components(all_transactions_net); all_comp$no
 all_comp$csize
@@ -247,38 +255,133 @@ table(V(giantGraph_all)$phone_type)
 
 plot(giantGraph_all, vertex.size = 1, vertex.label = NA)
 
-# July-September Network #
-july_sep_transactions_net <- asIgraph(jul_sep_transactions)
-# Components 
-july_sep_comp <- components(july_sep_transactions_net); july_sep_comp$no
-july_sep_comp$csize
-giantGraph_july_sep <- july_sep_transactions_net %>% 
-  induced.subgraph(., which(july_sep_comp$membership == which.max(july_sep_comp$csize)))
-print(vcount(giantGraph_july_sep)) # Nodes
-print(ecount(giantGraph_july_sep)) # Edges
-plot(giantGraph_july_sep, vertex.size = 1, vertex.label = NA)
-
-# October Network #
-oct_transactions_net <- asIgraph(oct_transactions)
-# Components 
-oct_comp <- components(oct_transactions_net); oct_comp$no
-oct_comp$csize
-giantGraph_oct <- oct_transactions_net %>% 
-  induced.subgraph(., which(oct_comp$membership == which.max(oct_comp$csize)))
-print(vcount(giantGraph_oct)) # Nodes
-print(ecount(giantGraph_oct)) # Edges
-plot(giantGraph_oct, vertex.size = 1, vertex.label = NA)
-
-# January-February Network #
-jan_feb_transactions_net <- asIgraph(jan_feb_transactions)
-# Components 
-jan_feb_comp <- components(jan_feb_transactions_net); jan_feb_comp$no
-jan_feb_comp$csize
-giantGraph_jan_feb <- jan_feb_transactions_net %>% 
-  induced.subgraph(., which(jan_feb_comp$membership == which.max(jan_feb_comp$csize)))
-print(vcount(giantGraph_jan_feb)) # Nodes
-print(ecount(giantGraph_jan_feb)) # Edges
-plot(giantGraph_jan_feb, vertex.size = 1, vertex.label = NA)
+# # July-September Network #
+# july_sep_transactions_net <- asIgraph(jul_sep_transactions)
+# # Components 
+# july_sep_comp <- components(july_sep_transactions_net); july_sep_comp$no
+# july_sep_comp$csize
+# giantGraph_july_sep <- july_sep_transactions_net %>% 
+#   induced.subgraph(., which(july_sep_comp$membership == which.max(july_sep_comp$csize)))
+# print(vcount(giantGraph_july_sep)) # Nodes
+# print(ecount(giantGraph_july_sep)) # Edges
+# plot(giantGraph_july_sep, vertex.size = 1, vertex.label = NA)
+# 
+# # October Network #
+# oct_transactions_net <- asIgraph(oct_transactions)
+# # Components 
+# oct_comp <- components(oct_transactions_net); oct_comp$no
+# oct_comp$csize
+# giantGraph_oct <- oct_transactions_net %>% 
+#   induced.subgraph(., which(oct_comp$membership == which.max(oct_comp$csize)))
+# print(vcount(giantGraph_oct)) # Nodes
+# print(ecount(giantGraph_oct)) # Edges
+# plot(giantGraph_oct, vertex.size = 1, vertex.label = NA)
+# 
+# # January-February Network #
+# jan_feb_transactions_net <- asIgraph(jan_feb_transactions)
+# # Components 
+# jan_feb_comp <- components(jan_feb_transactions_net); jan_feb_comp$no
+# jan_feb_comp$csize
+# giantGraph_jan_feb <- jan_feb_transactions_net %>% 
+#   induced.subgraph(., which(jan_feb_comp$membership == which.max(jan_feb_comp$csize)))
+# print(vcount(giantGraph_jan_feb)) # Nodes
+# print(ecount(giantGraph_jan_feb)) # Edges
+# plot(giantGraph_jan_feb, vertex.size = 1, vertex.label = NA)
 ```
 
-## 
+```{r}
+```
+
+# Community Detection
+
+cluster_all: Used the infomap community detection algorithm as it works well for very large directed graphs. Using the algorithm, 24,744 communties were found. Based on the first 1,000 communities, their sizes were mostly in the 50-200 range. Their modularity score is 0.85, meaning the communities are very well-defined (likely due to the sparsity of the network). Once again, it's difficult to discern much from the visualization due to its size.
+
+```{r}
+## Clustering All ##
+cluster_all <- giantGraph_all %>% cluster_infomap()
+community_membership_all <- membership(cluster_all) 
+
+length(cluster_all) # Number of clusters
+sizes(cluster_all)  # Size of Clusters
+modularity(cluster_all) # How well-defined the clusters are
+
+cluster_all %>% plot(
+  .,
+  giantGraph_all,
+  # layout = layout_with_gem(.),
+  layout = layout_with_fr(giantGraph_all),
+  edge.arrow.size = .3,
+  vertex.size = 4,
+  vertex.label = NA,
+  vertex.color = adjustcolor(membership(.), alpha.f = .3),
+  vertex.label.cex = .5,
+  vertex.label.color = 'black',
+  mark.groups = by(seq_along(membership(.)), membership(.), invisible),
+  mark.shape = 1 / 4,
+  mark.col = rainbow(length(.), alpha = .1),
+  mark.border = NA
+)
+```
+
+## Influencers
+
+```{r}
+# Find Influencers #
+# All
+indegrees <- degree(giantGraph_all, mode = "in")
+influencer_nodes <- order(indegrees, decreasing = TRUE)[1:1000]
+global_influencers = data.frame(username = V(giantGraph_all)$name[influencer_nodes],
+                                indegree = indegrees[influencer_nodes])
+# Per Community
+community_influencers <- data.frame(
+  username = character(),
+  indegree = integer(),
+  community = integer())
+# Loop over each community
+for (community in unique(community_membership)) {
+  community_nodes <- V(giantGraph_all)[community_membership == community]
+    
+  # Get Community Influencer
+  indegrees <- degree(giantGraph_all, mode = "in", v = community_nodes)
+  influencer_indegree_value <- max(indegrees)
+  influencer_node <- which(indegrees == influencer_indegree_value)
+  influencer_username <- V(giantGraph_all)$name[community_nodes][influencer_node]
+  # Add to Dataframe
+  influencer <- data.frame(
+    username = influencer_username,
+    indegree = influencer_indegree_value,
+    community = community)
+  community_influencers <- rbind(community_influencers, influencer)  
+}
+```
+
+## Comparing Global vs. Local Influencers
+
+Findings:
+
+Global: 424 of the Top 1000 Indegree Users (Receive the most transactions) never send a transaction. 475 use iPhone.
+
+Local: 11592/24744 communities have influencers who never send a transaction. 21251 use iPhone
+
+Both: Global Influencers are not Local Influencers in multiple communities. Generally, they just appear in 1 community. No Local Influencer is a Local Influencer in multiple communities.
+
+```{r}
+# Phone Type
+global_influencers <- merge(global_influencers, phone_df, by.x = "username", by.y = "sender", all.x = TRUE)
+global_influencers <- global_influencers[order(-global_influencers$indegree), ]
+table(head(global_influencers, 1000)$phone_type)
+
+community_influencers <- merge(community_influencers, phone_df, by.x = "username", by.y = "sender", all.x = TRUE)
+table(community_influencers$phone_type)
+
+
+# Compare Directly
+top_50_global_influencers <- head(global_influencers, 50)
+community_counts <- table(community_influencers$username)
+global_influencer_counts <- community_counts[top_50_global_influencers$username]
+global_influencer_counts[is.na(global_influencer_counts)] <- 0
+global_influencer_counts
+community_counts
+```
+
+# ERGM
