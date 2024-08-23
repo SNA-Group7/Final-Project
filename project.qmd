@@ -6,6 +6,8 @@ execute:
   echo: false
 format: 
   pdf:
+          }
+          \fancyfoot[C]{\thepage}
       output-file: "SNAP"
       output-ext: "pdf"
       toc: true
@@ -21,6 +23,7 @@ format:
       link-citations: true
       linkcolor: blue
       include-in-header: 
+            }
         text: |
           \usepackage{fancyhdr}
           \usepackage{titling}
@@ -31,9 +34,9 @@ format:
               \thetitle
               \ifx \theauthor\empty  \else \ – \theauthor \fi
               \ifx \thedate\empty  \else \ – \thedate \ \fi
-            }
-          }
-          \fancyfoot[C]{\thepage}
+editor: 
+  markdown: 
+    wrap: sentence
 ---
 
 ```{r}
@@ -105,7 +108,7 @@ venmo_df <- venmo_df %>%
 
 # Remove Null Rows # Move this above
 venmo_df <- venmo_df %>%
-  filter(complete.cases(select(., all_of(c("date", "sender", "recipient", "note", "phone_type", "payment_type")))))
+  filter(complete.cases(date, sender, recipient, note, phone_type, payment_type))
 
 ## Snowballing (Want to include popular users, their friends, and the friends of their friends)
 # Unique Interactions (All components should be at least size 10)
@@ -379,6 +382,158 @@ community_counts
 
 # ERGM
 
+Our point of interest is identifying which factors make influencers distinct from other, casual Venmo users. The following hypotheses were developed for the purposes of our inquiry:
+
+H1: Users with the same phone type are more likely to send transactions to each other than users with different phone types. 
+H2: Influencers (users with a high indegree) are more likely to have high betweenness and eigenvector centrality than other users. 
+H3: Users who are connected to key influencers (high centrality users) are more likely to have increased transaction activity. 
+H4: Users with an iOS are more likely to send money rather than receive it. 
+H5: Influencers are more likely to engage in reciprocal sending and receiving behavior. 
+H6: The overall network has a small-world structure, where influencers connect different parts of the network.
+
+are influencers influencers because they're charging people or bc theyre paying people
+
 ```{r}
-save.image(file = "project.RData")
+library(intergraph)
+library(sna)
+library(ergm)
+# Convert igraph object to network object
+
+```
+
+```{r}
+## test h1
+giantGraph_all_network <- asNetwork(giantGraph_all)
+
+model_h1 = ergm(giantGraph_all_network ~ edges + nodematch("phone_type"))
+summary(model_h1)
+
+```
+
+```{r}
+# test h2
+
+betweenness_centrality <- betweenness(giantGraph_all, directed = TRUE)
+eigen_centrality <- eigen_centrality(giantGraph_all)$vector
+
+V(giantGraph_all)$betweenness_centrality <- betweenness_centrality
+V(giantGraph_all)$eigen_centrality <- eigen_centrality
+giantGraph_all_network <- asNetwork(giantGraph_all)
+
+model_h2 <- ergm(giantGraph_all_network ~ edges + nodecov("betweenness_centrality") + nodecov("eigen_centrality"))
+summary(model_h2)
+```
+
+```{r}
+# test h3
+total_degree_activity <- degree(giantGraph_all)
+V(giantGraph_all)$transaction_activity <- total_degree_activity
+
+threshold <- quantile(total_degree_activity, 0.9)
+V(giantGraph_all)$key_influencer <- ifelse(total_degree_activity > threshold, 1, 0)
+
+giantGraph_all_network <- asNetwork(giantGraph_all)
+
+model_h3 <- ergm(giantGraph_all_network ~ edges + 
+                   nodecov("transaction_activity") + 
+                   nodecov("key_influencer") + 
+                   nodecov("transaction_activity") * nodecov("key_influencer"))
+summary(model_h3)
+
+```
+
+```{r}
+# test h4 
+V(giantGraph_all)$is_iphone <- ifelse(V(giantGraph_all)$phone_type == "Venmo for iPhone", 1, 0)
+giantGraph_all_network <- asNetwork(giantGraph_all)
+
+model_H4 <- ergm(giantGraph_all_network ~ edges + nodeocov("is_iphone"))
+summary(model_H4)
+
+```
+
+```{r}
+# test h5
+giantGraph_all_network <- asNetwork(giantGraph_all)
+model_H5 <- ergm(giantGraph_all_network ~ edges + mutual + nodematch("key_influencer"))
+summary(model_H5)
+
+```
+
+```{r}
+library(dplyr)
+library(lubridate)
+
+# If the network has dynamic attributes, remove them (clear any onset/terminus)
+if (!is.null(giantGraph_all_network$dynamic)) {
+  giantGraph_all_network <- asNetwork(asIgraph(giantGraph_all_network))
+}
+
+# Create a season variable based on the month of each transaction
+giantGraph_all_network %v% "season" <- case_when(
+  month(giantGraph_all_network %v% "date") %in% c(12, 1, 2) ~ "Winter",
+  month(giantGraph_all_network %v% "date") %in% c(3, 4, 5) ~ "Spring",
+  month(giantGraph_all_network %v% "date") %in% c(6, 7, 8) ~ "Summer",
+  month(giantGraph_all_network %v% "date") %in% c(9, 10, 11) ~ "Fall",
+  TRUE ~ "Unknown"
+)
+
+# Convert the season categories to numeric values
+giantGraph_all_network %v% "season_numeric" <- case_when(
+  giantGraph_all_network %v% "season" == "Winter" ~ 1,
+  giantGraph_all_network %v% "season" == "Spring" ~ 2,
+  giantGraph_all_network %v% "season" == "Summer" ~ 3,
+  giantGraph_all_network %v% "season" == "Fall" ~ 4,
+  giantGraph_all_network %v% "season" == "Unknown" ~ NA_real_
+)
+
+# Remove nodes with NA values in the season_numeric variable
+valid_nodes <- !is.na(giantGraph_all_network %v% "season_numeric")
+giantGraph_all_network <- network.extract(giantGraph_all_network, valid_nodes)
+
+# Fit the ERGM model using the numeric season variable
+model_season <- ergm(giantGraph_all_network ~ 
+                       edges + 
+                       nodecov("season_numeric"))
+
+summary(model_season)
+```
+
+```{r}
+library(intergraph)
+library(sna)
+
+
+# test h2
+
+betweenness_centrality <- betweenness(giantGraph_all, directed = TRUE)
+eigen_centrality <- eigen_centrality(giantGraph_all)$vector
+
+
+
+V(giantGraph_all)$betweenness_centrality <- betweenness_centrality
+V(giantGraph_all)$eigen_centrality <- eigen_centrality
+giantGraph_all_network <- asNetwork(giantGraph_all)
+
+model_h2 <- ergm(giantGraph_all_network ~ edges + nodecov("betweenness_centrality") + nodecov("eigen_centrality"))
+summary(model_h2)
+
+
+```
+
+```{r}
+
+gof1 <- gof(model_h1, verbose=T, burnin=1e+5, interval=1e+5, control = control.gof.ergm(nsim = 200))
+plot(gof1)
+
+gof2 <- gof(model_h2, verbose=T, burnin=1e+5, interval=1e+5, control = control.gof.ergm(nsim = 200))
+plot(gof2)
+gof3 <- gof(model_h3, verbose=T, burnin=1e+5, interval=1e+5, control = control.gof.ergm(nsim = 200))
+plot(gof3)
+gof4 <- gof(model_h4, verbose=T, burnin=1e+5, interval=1e+5, control = control.gof.ergm(nsim = 200))
+plot(fog4)
+go5 <- gof(model_h5, verbose=T, burnin=1e+5, interval=1e+5, control = control.gof.ergm(nsim = 200))
+plot(gof5)
+gof6 <- gof(model_h6, verbose=T, burnin=1e+5, interval=1e+5, control = control.gof.ergm(nsim = 200))
+plot(gof6)
 ```
