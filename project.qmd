@@ -81,6 +81,10 @@ list.files() # List the files in the current working directory to see if you're 
 ## Prune the Dataset
 
 ```{r}
+test <- read_csv("venmo.csv", n_max=1)
+```
+
+```{r}
 ## Process Raw Dataset ##
 # Read and Shrink Dataset
 selected_columns <- c("_id", 
@@ -146,23 +150,6 @@ write.csv(pruned_venmo_df, file = "pruned_venmo.csv", row.names = FALSE)
 pruned_venmo_df <- read_csv("pruned_venmo.csv")
 head(pruned_venmo_df)
 
-# Split By Date #
-#NOTE: Possible that should do popular_user stuff per Date Range Network
-#July 2018 - September 2018
-jul_sep_transaction_df <- pruned_venmo_df %>% filter(pruned_venmo_df$date >= as.POSIXct("2018-07-01 00:00:00")
-                                               & pruned_venmo_df$date < as.POSIXct("2018-10-01 00:00:00"))
-jul_sep_transaction_df <- jul_sep_transaction_df[, c("sender", "recipient", "payment_type")]
-#October 2018
-oct_transaction_df <- pruned_venmo_df %>% filter(pruned_venmo_df$date >= as.POSIXct("2018-10-01 00:00:00")
-                                               & pruned_venmo_df$date < as.POSIXct("2018-11-01 00:00:00"))
-oct_transaction_df <- oct_transaction_df[, c("sender", "recipient", "payment_type")]
-
-#Jan 2019 - Feb 2019
-jan_feb_transaction_df <- pruned_venmo_df %>% filter(pruned_venmo_df$date >= as.POSIXct("2019-01-01 00:00:00")
-                                               & pruned_venmo_df$date < as.POSIXct("2019-03-01 00:00:00"))
-jan_feb_transaction_df <- jan_feb_transaction_df[, c("sender", "recipient", "payment_type")]
-
-
 # Transactions
 all_transaction_df <- pruned_venmo_df[, c("sender", "recipient", "payment_type")]
 
@@ -197,49 +184,13 @@ V(all_transactions_net)$phone_type <- phone_types[V(all_transactions_net)$name]
 
 edge_attr(all_transactions_net)
 vertex_attr(all_transactions_net)
-
-### UNUSED ###
-# #July-September Network#
-# jul_sep_transactions_net <- graph_from_data_frame(d = jul_sep_transaction_df, 
-#                                               directed = TRUE, 
-#                                               vertices = NULL)
-# # Label Directed Links
-# E(jul_sep_transactions_net)$type <- jul_sep_transaction_df$payment_type
-# # Add Phone Types
-# V(jul_sep_transactions_net)$phone_type <- phone_types[V(jul_sep_transactions_net)$name]
-# 
-# #October Network#
-# oct_transactions_net <- graph_from_data_frame(d = oct_transaction_df, 
-#                                               directed = TRUE, 
-#                                               vertices = NULL)
-# # Label Directed Links
-# E(oct_transactions_net)$type <- oct_transaction_df$payment_type
-# # Add Phone Types
-# V(oct_transactions_net)$phone_type <- phone_types[V(oct_transactions_net)$name]
-# 
-# #January-February Network#
-# jan_feb_transactions_net <- graph_from_data_frame(d = jan_feb_transaction_df, 
-#                                               directed = TRUE, 
-#                                               vertices = NULL)
-# # Label Directed Links
-# E(jan_feb_transactions_net)$type <- jan_feb_transaction_df$payment_type
-# # Add Phone Types
-# V(jan_feb_transactions_net)$phone_type <- phone_types[V(jan_feb_transactions_net)$name]
+vcount(all_transactions_net)
+ecount(all_transactions_net)
+table(E(all_transactions_net)$type)
+table(V(all_transactions_net)$phone_type)
 ```
 
 # Descriptive Analysis
-
-Finding: During preprocessing, popular users (at least 10 transactions) are found based on their transactions throughout all time. However, based on the below, popular users in the July2018-Feb2019 range are not popular within the three smaller ranges. Thus, may need to get popular users per range (or not compare across ranges at all). Likely need to make different "pruned" datasets for each range if want to do this.
-
-all_transactions:
-
-This network was created by going through the original dataset and pruning it so it'd be easier to work with. First, all users with at least 10 unique transactions are found. Then, the neighbors of these "popular" users and the neighbors of the neighbors are found. Then, a new dataset called pruned_venmo is made by only keeping track of transactions with users from these 3 groups. Doing this causes all 2010 components in the network to have a size of at least 10 (which is demonstrated below). Most components have under 300 nodes, so to make analysis more interesting, we choose to look at the largest one of 248,884 nodes and 316, 400 edges. It also has a density of 5.107922e-06, meaning the network is very sparse, which would be expected in large social networks. Due to its size, it's difficult to make conclusions from its visualization, but it seems that it grows increasingly clustered towards the middle.
-
-In the largest component, 260,922 of transactions are Payments, while only 55,478 are Charges. In addition, 163,179 users use iPhone, 13,038 use Android, and 455 use some other platform. Unfortunately, due to the nature of the dataset, it's only possible to know the phone type of Senders (sent a transaction), so 72,212 have an unknown application type.
-
-Specific Date Range Networks:
-
-The "popular" users across all_transactions are not popular within the date ranges. This means that within the ranges of July-September, October, and January-February, no user has 10 unique interactions. To decrease the sparsity of the components in these networks, "popular" user preprocessing must be done on these ranges individually.
 
 ```{r}
 library(igraph)
@@ -250,7 +201,7 @@ library(intergraph)
 all_comp <- components(all_transactions_net); all_comp$no
 all_comp$csize
 giantGraph_all <- all_transactions_net %>% 
-  induced.subgraph(., which(all_comp$membership == which.max(all_comp$csize)))
+  induced_subgraph(., which(all_comp$membership == which.max(all_comp$csize)))
 print(vcount(giantGraph_all)) # Nodes
 print(ecount(giantGraph_all)) # Edges
 graph.density(giantGraph_all)
@@ -286,8 +237,6 @@ plot(giantGraph_all, vertex.size = 1, vertex.label = NA)
 ```
 
 # Community Detection
-
-cluster_all: Used the infomap community detection algorithm as it works well for very large directed graphs. Using the algorithm, 24,744 communties were found. Based on the first 1,000 communities, their sizes were mostly in the 50-200 range. Their modularity score is 0.85, meaning the communities are very well-defined (likely due to the sparsity of the network). Once again, it's difficult to discern much from the visualization due to its size.
 
 ```{r}
 ## Clustering All ##
@@ -348,7 +297,7 @@ for (community in unique(community_membership)) {
 }
 ```
 
-## Comparing Global vs. Local Influencers
+### Comparing Global vs. Local Influencers
 
 Findings:
 
@@ -359,16 +308,70 @@ Local: 11592/24744 communities have influencers who never send a transaction. 21
 Both: Global Influencers are not Local Influencers in multiple communities. Generally, they just appear in 1 community. No Local Influencer is a Local Influencer in multiple communities.
 
 ```{r}
-# Phone Type
+# Global
 global_influencers <- merge(global_influencers, phone_df, by.x = "username", by.y = "sender", all.x = TRUE)
+# Top 1000
 global_influencers <- global_influencers[order(-global_influencers$indegree), ]
-table(head(global_influencers, 1000)$phone_type)
+top_1000_global_influencers <- head(global_influencers, 1000)
+table(top_50_global_influencers$phone_type)
 
+#Get edge types 
+top_1000_global_influencers$in_pay_count <- NA
+top_1000_global_influencers$in_charge_count <- NA
+top_1000_global_influencers$out_pay_count <- NA
+top_1000_global_influencers$out_charge_count <- NA
+for (i in seq(1, 1000)) {
+  username <- top_1000_global_influencers$username[i]
+  user_vertex <- V(giantGraph_all)[name == username]
+  
+  incoming_edges <- incident(giantGraph_all, user_vertex, mode = "in")
+  in_edge_attributes <- get.edge.attribute(giantGraph_all, name = "type", index = incoming_edges)
+  
+  top_1000_global_influencers$in_pay_count[i] <- sum(in_edge_attributes == "pay")
+  top_1000_global_influencers$in_charge_count[i] <- sum(in_edge_attributes == "charge")
+  
+  outgoing_edges <- incident(giantGraph_all, user_vertex, mode = "out")
+  out_edge_attributes <- get.edge.attribute(giantGraph_all, name = "type", index = outgoing_edges)
+  
+  top_1000_global_influencers$out_pay_count[i] <- sum(out_edge_attributes == "pay")
+  top_1000_global_influencers$out_charge_count[i] <- sum(out_edge_attributes == "charge")
+  
+}
+
+head(top_1000_global_influencers)
+top_50_global_influencers <- head(top_1000_global_influencers, 50)
+table(top_50_global_influencers$phone_type)
+
+# Edge Type Comparisons
+#1000
+mean(top_1000_global_influencers$in_pay_count, na.rm = TRUE)
+mean(top_1000_global_influencers$in_charge_count, na.rm = TRUE)
+sum(top_1000_global_influencers$in_pay_count == 0) #473
+sum(top_1000_global_influencers$in_charge_count == 0) #822
+
+mean(top_1000_global_influencers$out_pay_count, na.rm = TRUE)# 2.316
+mean(top_1000_global_influencers$out_charge_count, na.rm = TRUE)# 0.502
+sum(top_1000_global_influencers$out_pay_count == 0) #473
+sum(top_1000_global_influencers$out_charge_count == 0) #822
+
+#50
+mean(top_50_global_influencers$in_pay_count, na.rm = TRUE)
+mean(top_50_global_influencers$in_charge_count, na.rm = TRUE)
+sum(top_50_global_influencers$in_pay_count == 0) 
+sum(top_50_global_influencers$in_charge_count == 0)
+
+mean(top_50_global_influencers$out_pay_count, na.rm = TRUE)
+mean(top_50_global_influencers$out_charge_count, na.rm = TRUE)
+sum(top_50_global_influencers$out_pay_count == 0) 
+sum(top_50_global_influencers$out_charge_count == 0) 
+  
+
+# Local
 community_influencers <- merge(community_influencers, phone_df, by.x = "username", by.y = "sender", all.x = TRUE)
 table(community_influencers$phone_type)
 
 
-# Compare Directly
+# Compare Directly - Check if Global Influencers appear as Local Influencers in multiple communities
 top_50_global_influencers <- head(global_influencers, 50)
 community_counts <- table(community_influencers$username)
 global_influencer_counts <- community_counts[top_50_global_influencers$username]
@@ -533,5 +536,4 @@ go5 <- gof(model_h5, verbose=T, burnin=1e+5, interval=1e+5, control = control.go
 plot(gof5)
 gof6 <- gof(model_h6, verbose=T, burnin=1e+5, interval=1e+5, control = control.gof.ergm(nsim = 200))
 plot(gof6)
-
 ```
