@@ -209,28 +209,6 @@ table(E(giantGraph_all)$type)
 table(V(giantGraph_all)$phone_type)
 
 plot(giantGraph_all, vertex.size = 1, vertex.label = NA)
-
-###UNUSED###
-# # July-September Network #
-# # Components
-# july_sep_comp <- components(july_sep_transactions_net); july_sep_comp$no
-# july_sep_comp$csize
-# giantGraph_july_sep <- july_sep_transactions_net %>%
-#   induced.subgraph(., which(july_sep_comp$membership == which.max(july_sep_comp$csize)))
-# 
-# # October Network #
-# # Components
-# oct_comp <- components(oct_transactions_net); oct_comp$no
-# oct_comp$csize
-# giantGraph_oct <- oct_transactions_net %>%
-#   induced.subgraph(., which(oct_comp$membership == which.max(oct_comp$csize)))
-# 
-# # January-February Network #
-# # Components
-# jan_feb_comp <- components(jan_feb_transactions_net); jan_feb_comp$no
-# jan_feb_comp$csize
-# giantGraph_jan_feb <- jan_feb_transactions_net %>%
-#   induced.subgraph(., which(jan_feb_comp$membership == which.max(jan_feb_comp$csize)))
 ```
 
 ```{r}
@@ -298,14 +276,6 @@ for (community in unique(community_membership)) {
 ```
 
 ### Comparing Global vs. Local Influencers
-
-Findings:
-
-Global: 424 of the Top 1000 Indegree Users (Receive the most transactions) never send a transaction. 475 use iPhone.
-
-Local: 11592/24744 communities have influencers who never send a transaction. 21251 use iPhone
-
-Both: Global Influencers are not Local Influencers in multiple communities. Generally, they just appear in 1 community. No Local Influencer is a Local Influencer in multiple communities.
 
 ```{r}
 # Global
@@ -384,12 +354,7 @@ community_counts
 
 Our point of interest is identifying which factors make influencers distinct from other, casual Venmo users. The following hypotheses were developed for the purposes of our inquiry:
 
-H1: Users with the same phone type are more likely to send transactions to each other than users with different phone types. 
-H2: Influencers (users with a high indegree) are more likely to have high betweenness and eigenvector centrality than other users. 
-H3: Users who are connected to key influencers (high centrality users) are more likely to have increased transaction activity. 
-H4: Users with an iOS are more likely to send money rather than receive it. 
-H5: Influencers are more likely to engage in reciprocal sending and receiving behavior. 
-H6: The overall network has a small-world structure, where influencers connect different parts of the network.
+H1: Users with the same phone type are more likely to send transactions to each other than users with different phone types. H2: Influencers (users with a high indegree) are more likely to have high betweenness and eigenvector centrality than other users. H3: Users who are connected to key influencers (high centrality users) are more likely to have increased transaction activity. H4: Users with an iOS are more likely to send money rather than receive it. H5: Influencers are more likely to engage in reciprocal sending and receiving behavior. H6: The overall network has a small-world structure, where influencers connect different parts of the network.
 
 are influencers influencers because they're charging people or bc theyre paying people
 
